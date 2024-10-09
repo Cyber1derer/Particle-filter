@@ -1,2 +1,2 @@
 # Particle-filter
-Реализация фильтра частиц для автономной навигации
+Particle filter implementation for autonomous navigation

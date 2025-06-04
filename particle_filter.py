@@ -125,9 +125,11 @@ def sample_motion_model(odometry, particles):
         alpha_1, alpha_2, alpha_3, alpha_4 = Alpha
         a1,a2,a3,a4 = alpha_1,alpha_2,alpha_3,alpha_4
 
-        delta_dot_r1 = dr1+sample(a1*abs(dr1)+a2*d_t)
-        delta_dot_r2 = dr2+sample(a3*d_t+a4*(abs(dr1)+abs(dr2)))
-        delta_dot_t  = d_t+sample(a1*abs(dr2)+a2*d_t)
+        # apply noise following the odometry motion model from
+        # "Probabilistic Robotics" (Eq. 5.13)
+        delta_dot_r1 = dr1 + sample(a1 * abs(dr1) + a2 * d_t)
+        delta_dot_r2 = dr2 + sample(a1 * abs(dr2) + a2 * d_t)
+        delta_dot_t = d_t + sample(a3 * d_t + a4 * (abs(dr1) + abs(dr2)))
 
         x_dot = x + delta_dot_t*m.cos(theta+delta_dot_r1)
         y_dot = y + delta_dot_t*m.sin(theta+delta_dot_r1)
@@ -150,8 +152,7 @@ def sample_motion_model(odometry, particles):
     #оказывается odometry это одно измерение,а не серия
     particle_m = dict()
     for particle in particles:
-        pass
-        particle_m = [particle['x'],particle['y'],particle['theta']]
+        particle_m = [particle['x'], particle['y'], particle['theta']]
         #od = [delta_rot1,delta_trans,delta_rot2]
         od = [delta_rot1,delta_rot2,delta_trans]
         particle_new = sample_motion_model2(particle_m,od, noise)

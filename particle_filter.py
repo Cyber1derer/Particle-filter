@@ -98,69 +98,33 @@ def mean_pose(particles):
 
 import math as m
 
+def _wrap_to_pi(angle):
+    """Normalize angle to [-pi, pi]."""
+    return (angle + np.pi) % (2 * np.pi) - np.pi
+
+
 def sample_motion_model(odometry, particles):
-    # Samples new particle positions, based on old positions, the odometry measurements and the motion noise
+    """Sample new particle positions using the odometry motion model."""
 
     delta_rot1 = odometry['r1']
     delta_trans = odometry['t']
     delta_rot2 = odometry['r2']
 
-    # the motion noise parameters: [alpha1, alpha2, alpha3, alpha4]
-    noise = [0.1, 0.1, 0.05, 0.05]
-    #noise = [0.,0.,0.,0.]
+    # motion noise parameters [alpha1, alpha2, alpha3, alpha4]
+    alpha1, alpha2, alpha3, alpha4 = [0.1, 0.1, 0.05, 0.05]
 
-    # "move" each particle according to the odometry measurements plus sampled noise to generate new particle set
     new_particles = []
 
-    '''your code here'''
-    assert delta_trans >=0
-    ##from Lab4
-    def sample_motion_model2(X, U, Alpha):
-        sample = lambda sigma: np.random.normal(0,sigma)
-        x,y,theta = X
-
-        delta_r1, delta_r2, delta_t = U
-        dr1,dr2,d_t = delta_r1,delta_r2,delta_t
-
-        alpha_1, alpha_2, alpha_3, alpha_4 = Alpha
-        a1,a2,a3,a4 = alpha_1,alpha_2,alpha_3,alpha_4
-
-        delta_dot_r1 = dr1+sample(a1*abs(dr1)+a2*d_t)
-        delta_dot_r2 = dr2+sample(a3*d_t+a4*(abs(dr1)+abs(dr2)))
-        delta_dot_t  = d_t+sample(a1*abs(dr2)+a2*d_t)
-
-        x_dot = x + delta_dot_t*m.cos(theta+delta_dot_r1)
-        y_dot = y + delta_dot_t*m.sin(theta+delta_dot_r1)
-        theta_dot = theta + delta_dot_r1+delta_dot_r2
-        return x_dot, y_dot, theta_dot
-    
-    # particle_m1 = dict()
-    # for particle in particles:
-        
-    #     particle_m = [particle['x'],particle['y'],particle['theta']]
-    #     for i in range(delta_rot1.shape[0]):
-    #         od = [delta_rot1[i],delta_trans[i],delta_rot2[i]]
-    #         particle_m = sample_motion_model2(particle_m,od, noise)
-        
-        
-    #     particle_m1['x'],particle_m1['y'],particle_m1['theta'] = particle_m[0],particle_m[1],particle_m[2]
-    #     new_particles.append(particle_m1)
-
-
-    #оказывается odometry это одно измерение,а не серия
-    particle_m = dict()
     for particle in particles:
-        pass
-        particle_m = [particle['x'],particle['y'],particle['theta']]
-        #od = [delta_rot1,delta_trans,delta_rot2]
-        od = [delta_rot1,delta_rot2,delta_trans]
-        particle_new = sample_motion_model2(particle_m,od, noise)
-        particle_new_dict = {'x': particle_new[0], 'y': particle_new[1], 'theta': particle_new[2]}
-        new_particles.append(particle_new_dict)
+        rot1_hat = delta_rot1 + np.random.normal(0, alpha1 * abs(delta_rot1) + alpha2 * delta_trans)
+        trans_hat = delta_trans + np.random.normal(0, alpha3 * delta_trans + alpha4 * (abs(delta_rot1) + abs(delta_rot2)))
+        rot2_hat = delta_rot2 + np.random.normal(0, alpha1 * abs(delta_rot2) + alpha2 * delta_trans)
 
+        x = particle['x'] + trans_hat * np.cos(particle['theta'] + rot1_hat)
+        y = particle['y'] + trans_hat * np.sin(particle['theta'] + rot1_hat)
+        theta = _wrap_to_pi(particle['theta'] + rot1_hat + rot2_hat)
 
-
-    '''***        ***'''
+        new_particles.append({'x': x, 'y': y, 'theta': theta})
 
     return new_particles
 
@@ -178,50 +142,14 @@ def eval_sensor_model(sensor_data, particles, landmarks):
 
     weights = []
 
-    '''your code here'''
-    ##from Lab5
-    prob_normal_distribution = lambda x, sigma: (1/(sigma*m.sqrt(2*m.pi)))*m.exp(-0.5*(x**2/sigma**2))
-    prob = prob_normal_distribution
-    eps_d, eps_alpha = [sigma_r, sigma_r]
-    def landmark_detection_model(Z,X,M):
-        i,d,alpha = Z
-        x,y,theta = X
-        m_x, m_y = M
-        d_dot = np.sqrt((m_x[i]-x)**2+(m_y[i]-y)**2)
-        alpha_dot = np.arctan2(m_y[i]-y,m_x[i]-x)-theta
-        P_det = prob(d_dot-d,eps_d)*prob(alpha_dot-alpha,eps_alpha)
-        return P_det
-    def landmark_detection_model2(Z,X,L):
-        i,d = Z
-        x,y,theta = X
-        m_x, m_y = L
-        m_xi, m_yi = [m_x[i],m_y[i]]
-        d_dot = np.sqrt((m_xi-x)**2+(m_yi-y)**2)
-        P_det = prob(d_dot-d,eps_d)
-        return P_det
-    ldm2 = landmark_detection_model2
-
-    def prod_ldm2(ids, ranges, landmarks, particle):
-        P_prod = 1
-        L = np.array(list(landmarks.values())).T.tolist()
-        for i,id in enumerate(ids):
-            X = [particle['x'],particle['y'], particle['theta']]
-            P_prod = P_prod*ldm2([id-1,ranges[i]],X,L)
-        return P_prod
-
-    for i, particle in enumerate(particles):
-        weight = prod_ldm2(ids, ranges, landmarks, particle)
+    for particle in particles:
+        weight = 1.0
+        for lm_id, r_meas in zip(ids, ranges):
+            landmark_pos = landmarks[lm_id]
+            dist = np.linalg.norm([particle['x'] - landmark_pos[0],
+                                   particle['y'] - landmark_pos[1]])
+            weight *= scipy.stats.norm(loc=dist, scale=sigma_r).pdf(r_meas)
         weights.append(weight)
-
-    # S_t = []
-    # nona = 0
-    # for i in range():
-    #     w = ldm([ids[i], ranges[i]], particles[i], [landmarks[""]])
-
-
-
-        # probalistic robotics pdf, page 90(pdf)
-    '''***        ***'''
 
     # normalize weights
     normalizer = sum(weights)
@@ -236,22 +164,21 @@ def resample_particles(particles, weights):
 
     new_particles = []
 
-    '''your code here'''
-    M = len(weights)
-    M_m1 = M**-1
-    r = np.random.uniform(0,M_m1)
+    M = len(particles)
+    step = 1.0 / M
+    r = np.random.uniform(0, step)
     c = weights[0]
     i = 0
-    for j in range(M):
-        u = r + (j)*M_m1
-        while u>c:
-            i = i+1
-            c = c + weights[i]
-        new_particles.append(particles[i])
-
-    
-
-    '''***        ***'''
+    for m in range(M):
+        U = r + m * step
+        while U > c:
+            i += 1
+            c += weights[i]
+        new_particles.append({
+            'x': particles[i]['x'],
+            'y': particles[i]['y'],
+            'theta': particles[i]['theta']
+        })
 
     return new_particles
 
